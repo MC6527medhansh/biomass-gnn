@@ -1,0 +1,21 @@
+# python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+.env
+
+# data & outputs
+data/graphs/
+data/labels.csv
+*.log
+*.ckpt
+*.pt
+
+# os/editor
+.DS_Store
+.vscode/
+.idea/
+
+*.xml

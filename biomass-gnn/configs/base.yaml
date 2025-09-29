@@ -1,0 +1,27 @@
+task: regression   # options: 'binary' or 'regression'
+
+data:
+  graphs_dir: data/graphs
+  labels_csv: data/labels.csv
+  split_seed: 42
+  val_ratio: 0.15
+  test_ratio: 0.20
+  organism_col: model_id   # column in labels.csv
+  media_col: media_id      # column in labels.csv
+
+model:
+  type: gcn           # 'gcn' | 'gat' | 'sage'
+  hidden_dim: 64
+  num_layers: 2
+  dropout: 0.3
+
+train:
+  epochs: 150
+  batch_size: 1
+  lr: 0.001
+  weight_decay: 0.0001
+  early_stop_patience: 12
+
+metrics:
+  regression: [mae, rmse, spearman]
+  binary: [f1, auroc, precision, recall]
