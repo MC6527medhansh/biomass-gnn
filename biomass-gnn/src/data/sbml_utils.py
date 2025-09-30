@@ -68,10 +68,17 @@ def find_biomass_reaction(model) -> Optional[str]:
     """
     # Strategy 1: Check objective
     try:
-        rxns = [v.name for v in model.objective.variables]
-        if rxns:
-            logger.debug(f"Found biomass from objective: {rxns[0]}")
-            return rxns[0]
+        # Get reaction objects from objective, not names
+        obj_rxns = list(model.objective.variables)
+        if obj_rxns:
+            # Extract the actual reaction ID
+            rxn_id = obj_rxns[0].name
+            # Verify this reaction actually exists in model
+            if rxn_id in [r.id for r in model.reactions]:
+                logger.debug(f"Found biomass from objective: {rxn_id}")
+                return rxn_id
+            else:
+                logger.debug(f"Objective rxn {rxn_id} not in model, trying pattern search")
     except Exception as e:
         logger.debug(f"Could not extract from objective: {e}")
     
