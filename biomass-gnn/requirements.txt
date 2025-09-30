@@ -1,0 +1,19 @@
+# Core dependencies
+cobra>=0.26.0
+numpy>=1.21.0
+pandas>=1.3.0
+pyyaml>=6.0
+
+# Graph processing
+networkx>=2.6.0
+
+# Deep learning (PyTorch + PyG)
+torch>=2.0.0
+torch-geometric>=2.3.0
+
+# Async downloads
+aiohttp>=3.8.0
+async-timeout>=4.0.0
+
+# Development
+pytest>=7.0.0
