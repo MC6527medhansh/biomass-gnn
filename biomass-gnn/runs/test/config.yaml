@@ -1,0 +1,30 @@
+data:
+  graphs_dir: data/graphs
+  labels_csv: data/labels.csv
+  media_col: media_id
+  organism_col: model_id
+  split_seed: 42
+  test_ratio: 0.2
+  val_ratio: 0.15
+metrics:
+  binary:
+  - f1
+  - auroc
+  - precision
+  - recall
+  regression:
+  - mae
+  - rmse
+  - spearman
+model:
+  dropout: 0.3
+  hidden_dim: 64
+  num_layers: 2
+  type: gcn
+task: regression
+train:
+  batch_size: 1
+  early_stop_patience: 12
+  epochs: 150
+  lr: 0.001
+  weight_decay: 0.0001

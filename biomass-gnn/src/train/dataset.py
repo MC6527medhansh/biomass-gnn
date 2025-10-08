@@ -1,6 +1,8 @@
 """
 PyTorch Geometric Dataset for biomass prediction.
 Loads graphs from GraphML and encodes media conditions on exchange reaction nodes.
+
+FIXED: Media encoding now correctly uses CSV files instead of model.medium
 """
 import os
 import pandas as pd
@@ -126,9 +128,8 @@ class BiomassDataset(Dataset):
         """
         model_id, media_id, label_idx = self.samples[idx]
         
-        # Get model path
+        # Get graph path
         graph_path = os.path.join(self.graphs_dir, f"{model_id}.graphml")
-        model_path = os.path.join(os.path.dirname(self.graphs_dir), 'models', f"{model_id}.xml")
         
         # Load graph (with caching)
         if model_id not in self._graph_cache:
@@ -138,7 +139,7 @@ class BiomassDataset(Dataset):
             G = self._graph_cache[model_id].copy()
         
         # Encode media on exchange reactions
-        G = self._encode_media(G, media_id, model_path)
+        G = self._encode_media(G, media_id)
         
         # Convert to PyG Data
         data = self._networkx_to_pyg(G)
@@ -154,70 +155,75 @@ class BiomassDataset(Dataset):
         
         return data
     
-    def _encode_media(self, G: nx.Graph, media_id: str, model_path: str) -> nx.Graph:
+    def _encode_media(self, G: nx.Graph, media_id: str) -> nx.Graph:
         """
-        Add media_bound feature to exchange reaction nodes using model's default medium.
+        Add media_bound feature to exchange reaction nodes using CSV media profiles.
         
-        Uses the model's existing medium (model.medium) which is guaranteed to work.
-        For 'rich' media, attempts to add amino acids on top of default medium.
+        FIXED: Now uses self.media_profiles (loaded from CSV files) instead of model.medium.
         
         For each exchange reaction node:
-        - If in computed media profile: set media_bound = bound value
-        - Otherwise: set media_bound = 0.0
+        - If rxn_id in media profile CSV: set media_bound = bound value (negative = uptake)
+        - Otherwise: set media_bound = 0.0 (closed/no uptake)
         
-        Non-exchange nodes get media_bound = 0.0
+        Non-exchange nodes always get media_bound = 0.0
+        
+        Args:
+            G: NetworkX graph with node attributes
+            media_id: Media condition name (e.g., 'minimal', 'rich')
+            
+        Returns:
+            Graph with media_bound feature added to all nodes
+            
+        Raises:
+            ValueError: If media_id not found in loaded media profiles
         """
-        from src.data.sbml_utils import read_sbml_model
+        # Validate media_id
+        if media_id not in self.media_profiles:
+            available = list(self.media_profiles.keys())
+            raise ValueError(
+                f"Unknown media condition: '{media_id}'. "
+                f"Available: {available}"
+            )
         
-        # Load model to get its default medium
-        model = read_sbml_model(model_path, validate=False)
-        
-        # Use model's existing medium as baseline
-        try:
-            media_bounds = dict(model.medium)  # Returns dict of {rxn_id: bound}
-            
-            if media_id == 'rich':
-                # Add amino acid exchanges if they exist
-                for rxn in model.reactions:
-                    if getattr(rxn, 'boundary', False):
-                        rxn_name = rxn.name.lower() if hasattr(rxn, 'name') else ''
-                        rxn_id_lower = rxn.id.lower()
-                        
-                        # Check for amino acids in name or ID
-                        amino_acids = ['lysine', 'isoleucine', 'leucine', 'valine', 
-                                      'methionine', 'phenylalanine', 'tryptophan', 'threonine',
-                                      'lys', 'ile', 'leu', 'val', 'met', 'phe', 'trp', 'thr']
-                        if any(aa in rxn_name or aa in rxn_id_lower for aa in amino_acids):
-                            if rxn.id not in media_bounds or media_bounds[rxn.id] >= 0:
-                                media_bounds[rxn.id] = -5.0  # Allow uptake
-            
-            # If media_bounds is empty or None, use empty dict
-            if not media_bounds:
-                media_bounds = {}
-                
-        except Exception as e:
-            logger.error(f"Could not get media for {media_id}: {e}")
-            media_bounds = {}
+        # Get media bounds from CSV (not from model!)
+        media_bounds = self.media_profiles[media_id]
         
         # Encode on graph nodes
         matched_count = 0
+        total_exchanges = 0
+        
         for node in G.nodes():
             node_data = G.nodes[node]
             is_exchange = int(node_data.get('is_exchange', 0))
             
-            if is_exchange and node in media_bounds:
-                G.nodes[node]['media_bound'] = float(media_bounds[node])
-                matched_count += 1
+            if is_exchange:
+                total_exchanges += 1
+                
+                # Check if this exchange is in the media profile
+                if node in media_bounds:
+                    G.nodes[node]['media_bound'] = float(media_bounds[node])
+                    matched_count += 1
+                else:
+                    # Exchange not in media = closed (no uptake)
+                    G.nodes[node]['media_bound'] = 0.0
             else:
+                # Non-exchange nodes always get 0
                 G.nodes[node]['media_bound'] = 0.0
         
-        total_exchanges = sum(1 for n in G.nodes() if G.nodes[n].get('is_exchange', 0) == 1)
+        # Calculate match rate
         match_rate = 100 * matched_count / total_exchanges if total_exchanges > 0 else 0
         
         logger.debug(
             f"Encoded media '{media_id}': matched {matched_count}/{total_exchanges} "
             f"exchanges ({match_rate:.1f}%)"
         )
+        
+        # Warn if match rate is suspiciously low
+        if match_rate < 5 and total_exchanges > 0:
+            logger.warning(
+                f"Low media match rate ({match_rate:.1f}%) for media '{media_id}'. "
+                f"Check that exchange reaction IDs in CSV match graph node IDs."
+            )
         
         return G
     
